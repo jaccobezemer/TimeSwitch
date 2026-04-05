@@ -36,6 +36,10 @@
 #define TOUCH_Y_RAW_TOP    229
 #define TOUCH_Y_RAW_BOTTOM 11
 
+// I (915) touch_cal: Kalibratie geladen: X(30->290 raw 118->118) Y(30->210 raw 151->151)
+// I (915) touch_cal: raw_x0=118 raw_x1=118 cal_x0=30 cal_x1=290
+// I (915) touch_cal: raw_y0=151 raw_y1=151 cal_y0=30 cal_y1=210
+
 // Touch orientatie (onafhankelijk van LCD-spiegeling)
 // Bij LV_DISPLAY_ROTATION_90: Y-as van XPT2046 is gespiegeld t.o.v. het scherm
 // Alle orientatie-correctie wordt gedaan door de kalibratie in process_coordinates.

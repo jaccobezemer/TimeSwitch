@@ -23,10 +23,13 @@ static void relay_toggle_cb(lv_event_t *e)
     // Als override actief is en de gebruiker zet het relais terug naar de schema-staat:
     // override cancelen zodat het schema weer het overneemt.
     if (relay_override_is_active() && on == relay_override_base_state()) {
+        relay_set(on);
         relay_override_cancel();
+        // Knopstatus is al correct (LVGL heeft CHECKABLE al getoggeld),
+        // alleen het label bijwerken.
         ESP_LOGI(TAG, "Relais terug naar schema-staat, override opgeheven");
     } else {
-        relay_override_set(on);
+        relay_override_set(on);  // zet relay + update display intern
         ESP_LOGI(TAG, "Relais handmatig %s (override)", on ? "AAN" : "UIT");
     }
     lv_label_set_text(s_relay_label, on ? "AAN" : "UIT");

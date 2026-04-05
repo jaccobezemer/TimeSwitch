@@ -224,10 +224,12 @@ esp_err_t ui_main_init(lv_display_t *disp)
     return ESP_OK;
 }
 
+static void relay_update_async_cb(void *arg)
+{
+    ui_relay_update((bool)(intptr_t)arg);
+}
+
 void ui_main_update_relay(bool on)
 {
-    if (lvgl_port_lock(0)) {
-        ui_relay_update(on);
-        lvgl_port_unlock();
-    }
+    lv_async_call(relay_update_async_cb, (void *)(intptr_t)on);
 }

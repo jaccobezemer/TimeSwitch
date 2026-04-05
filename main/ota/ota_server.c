@@ -16,6 +16,12 @@ static const char *TAG = "ota_server";
 static httpd_handle_t s_server = NULL;
 static atomic_int s_ota_progress = -1;
 
+extern void relay_override_set(bool on);
+extern void relay_override_cancel(void);
+extern bool relay_override_is_active(void);
+extern bool relay_override_base_state(void);
+extern void ui_main_update_relay(bool on);
+
 int ota_get_progress(void)
 {
     return atomic_load(&s_ota_progress);
@@ -49,6 +55,14 @@ static esp_err_t status_get_handler(httpd_req_t *req)
         "td{padding:8px 14px;border-bottom:1px solid #222233;font-size:13px}"
         ".on{color:#00aa44;font-weight:bold}"
         ".off{color:#888}"
+        ".relay-box{background:#222233;border-radius:10px;padding:16px;max-width:400px;"
+        "margin-top:16px;display:flex;align-items:center;justify-content:space-between}"
+        ".relay-state{font-size:18px;font-weight:bold}"
+        ".relay-ovr{font-size:12px;color:#ff8800;margin-top:4px}"
+        ".relay-btn{padding:10px 24px;border:none;border-radius:6px;font-size:15px;"
+        "font-weight:600;cursor:pointer;min-width:80px}"
+        ".btn-on{background:#00aa44;color:#fff}"
+        ".btn-off{background:#cc2222;color:#fff}"
         "</style></head><body>"
         "<h1>TimeSwitch</h1>";
 
@@ -68,18 +82,44 @@ static esp_err_t status_get_handler(httpd_req_t *req)
         "</p>";
     httpd_resp_send_chunk(req, LINKS, HTTPD_RESP_USE_STRLEN);
 
+    // Relais widget
+    static const char RELAY_WIDGET[] =
+        "<div class='relay-box'>"
+        "<div>"
+        "<div class='relay-state' id='rs'>...</div>"
+        "<div class='relay-ovr' id='ro'></div>"
+        "</div>"
+        "<button class='relay-btn' id='rb' onclick='toggleRelay()'>...</button>"
+        "</div>"
+        "<script>"
+        "function updateRelay(){"
+        "fetch('/api/relay').then(function(r){return r.json();}).then(function(d){"
+        "var rs=document.getElementById('rs');"
+        "var ro=document.getElementById('ro');"
+        "var rb=document.getElementById('rb');"
+        "rs.textContent=d.on?'Relais: AAN':'Relais: UIT';"
+        "rs.style.color=d.on?'#00aa44':'#cc2222';"
+        "ro.textContent=d.override?'Override actief':'';"
+        "rb.textContent=d.on?'Zet UIT':'Zet AAN';"
+        "rb.className=d.on?'relay-btn btn-off':'relay-btn btn-on';"
+        "rb._on=d.on;"
+        "}).catch(function(){});}"
+        "function toggleRelay(){"
+        "var rb=document.getElementById('rb');"
+        "var newOn=!rb._on;"
+        "fetch('/api/relay',{method:'POST',"
+        "headers:{'Content-Type':'application/json'},"
+        "body:JSON.stringify({on:newOn})})"
+        ".then(function(){setTimeout(updateRelay,300);}).catch(function(){});}"
+        "updateRelay();"
+        "</script>";
+    httpd_resp_send_chunk(req, RELAY_WIDGET, HTTPD_RESP_USE_STRLEN);
+
     static const char TABLE_HEAD[] =
-        "<table><thead><tr><th>Instelling</th><th>Waarde</th></tr></thead><tbody>";
+        "<table><thead><tr><th>Dag</th><th>Schema</th></tr></thead><tbody>";
     httpd_resp_send_chunk(req, TABLE_HEAD, HTTPD_RESP_USE_STRLEN);
 
     char row[256];
-
-    // Relais status
-    snprintf(row, sizeof(row),
-             "<tr><td>Relais</td><td class='%s'>%s</td></tr>",
-             relay_get() ? "on" : "off",
-             relay_get() ? "AAN" : "UIT");
-    httpd_resp_send_chunk(req, row, HTTPD_RESP_USE_STRLEN);
 
     // Schema per dag
     static const char *DAY_NL[] = {"Ma","Di","Wo","Do","Vr","Za","Zo"};
@@ -461,6 +501,53 @@ static esp_err_t api_schedule_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* ── GET /api/relay — huidige relaisstatus als JSON ─────────────────── */
+static esp_err_t api_relay_get_handler(httpd_req_t *req)
+{
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"on\":%s,\"override\":%s}",
+             relay_get()                ? "true" : "false",
+             relay_override_is_active() ? "true" : "false");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, buf);
+    return ESP_OK;
+}
+
+/* ── POST /api/relay — relais aan/uit zetten ────────────────────────── */
+static esp_err_t api_relay_post_handler(httpd_req_t *req)
+{
+    char body[32] = {0};
+    int len = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (len <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data");
+        return ESP_FAIL;
+    }
+    body[len] = '\0';
+
+    bool on;
+    if (strstr(body, "\"on\":true"))       on = true;
+    else if (strstr(body, "\"on\":false")) on = false;
+    else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
+        return ESP_FAIL;
+    }
+
+    // Zelfde logica als de touchscreen-knop:
+    // als override actief is en de nieuwe staat == schema-basisstaat → override opheffen
+    if (relay_override_is_active() && on == relay_override_base_state()) {
+        relay_set(on);
+        relay_override_cancel();
+        ui_main_update_relay(on);
+        ESP_LOGI(TAG, "Relais via web terug naar schema-staat, override opgeheven");
+    } else {
+        relay_override_set(on);  // zet relay + update display intern
+        ESP_LOGI(TAG, "Relais via web %s (override)", on ? "AAN" : "UIT");
+    }
+
+    httpd_resp_sendstr(req, "OK");
+    return ESP_OK;
+}
+
 /* ── Start ──────────────────────────────────────────────────────────── */
 esp_err_t ota_server_start(void)
 {
@@ -470,7 +557,7 @@ esp_err_t ota_server_start(void)
     config.server_port      = 80;
     config.stack_size       = 8192;
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 8;
+    config.max_uri_handlers = 10;
 
     esp_err_t err = httpd_start(&s_server, &config);
     if (err != ESP_OK) {
@@ -485,8 +572,10 @@ esp_err_t ota_server_start(void)
         { .uri = "/schedule",     .method = HTTP_GET,  .handler = schedule_get_handler     },
         { .uri = "/api/schedule", .method = HTTP_GET,  .handler = api_schedule_get_handler },
         { .uri = "/api/schedule", .method = HTTP_POST, .handler = api_schedule_post_handler},
+        { .uri = "/api/relay",    .method = HTTP_GET,  .handler = api_relay_get_handler    },
+        { .uri = "/api/relay",    .method = HTTP_POST, .handler = api_relay_post_handler   },
     };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 8; i++) {
         httpd_register_uri_handler(s_server, &uris[i]);
     }
 

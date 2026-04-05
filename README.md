@@ -7,13 +7,15 @@ Schakelklok voor ESP32 met touchscreen. Stuurt een relais aan op basis van een i
 
 ## Functies
 
-- Relais handmatig aan/uit via touchscreen
+- Relais aan/uit via touchscreen én webbrowser
 - Per dag instelbaar schema (Ma t/m Zo) met aan- en uitschakeltijd, opgeslagen in NVS
-- Override: handmatige bediening negeert het schema tot de volgende schema-overgang; terugzetten naar de schema-staat heft de override direct op
+- Override: handmatige bediening (display of web) negeert het schema tot de volgende schema-overgang; terugzetten naar de schema-staat heft de override direct op
+- Display en web UI zijn altijd synchroon — wijziging via web volgt direct op de display
 - Automatische tijdsynchronisatie via NTP (CET/CEST tijdzone)
 - WiFi configuratie via captive portal (geen hardcoded credentials)
 - Schema instellen via webbrowser (`http://<ip>/schedule`)
-- OTA firmware-update via webbrowser
+- Relais bedienen via webbrowser (`http://<ip>/`)
+- OTA firmware-update via webbrowser (`http://<ip>/update`)
 - Touch kalibratie met opslag in NVS; opnieuw kalibreren via Systeemtab
 
 ## Hardware
@@ -101,15 +103,20 @@ Per dag (Ma t/m Zo) is in te stellen:
 - Aan/uit inschakelen voor die dag
 - Aan-tijd en uit-tijd
 
+## Relais bedienen via web
+
+Ga naar `http://<ip-adres>/`. De statuspagina toont de huidige relaisstatus en een knop om te schakelen. Override-status is zichtbaar en de display-knop volgt direct mee.
+
 ## OTA update
 
-Ga naar `http://<ip-adres>/ota` en upload een nieuw `.bin` bestand. Het apparaat herstart automatisch na een succesvolle update.
+Ga naar `http://<ip-adres>/update` en upload een nieuw `.bin` bestand. Het apparaat herstart automatisch na een succesvolle update.
 
 ## Override-gedrag
 
-- Knop indrukken terwijl schema UIT zegt → **override AAN** (statuslabel toont wanneer override eindigt)
-- Knop opnieuw indrukken (terug naar schema-staat) → **override opgeheven**, schema neemt het direct over
-- Override eindigt automatisch bij de volgende schema-overgang (bijv. ma 07:00)
+- Schakelen (display of web) terwijl schema iets anders zegt → **override actief** (statuslabel toont wanneer override eindigt)
+- Terugzetten naar de schema-staat (display of web) → **override direct opgeheven**
+- Override eindigt automatisch bij de volgende schema-overgang
+- Display en web UI zijn altijd synchroon
 
 ## Opnieuw kalibreren
 

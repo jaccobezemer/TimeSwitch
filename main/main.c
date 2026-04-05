@@ -35,6 +35,7 @@ void relay_override_set(bool on)
     s_override_state      = on;
     s_override_base_valid = false;  // wordt bij eerste check bepaald
     relay_set(on);
+    ui_main_update_relay(on);
     ESP_LOGI(TAG, "Override actief: relais %s", on ? "AAN" : "UIT");
 }
 
@@ -140,8 +141,8 @@ void app_main(void)
     lvgl_port_add_touch(&touch_cfg);
 
     ESP_ERROR_CHECK(relay_init());
-    ESP_ERROR_CHECK(lcd_display_brightness_set(75));
-    ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_90));
+    ESP_ERROR_CHECK(lcd_display_brightness_set(50));
+    ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_0));
 
     ESP_ERROR_CHECK(settings_init());
     touch_cal_load();
