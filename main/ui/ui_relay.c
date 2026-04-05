@@ -10,72 +10,96 @@ extern bool relay_override_base_state(void);
 
 static const char *TAG = "ui_relay";
 
-static lv_obj_t *s_btn          = NULL;
-static lv_obj_t *s_relay_label  = NULL;
+static lv_obj_t *s_btn_on      = NULL;
+static lv_obj_t *s_btn_off     = NULL;
 static lv_obj_t *s_status_label = NULL;
 
-static void relay_toggle_cb(lv_event_t *e)
+static void apply_relay(bool on)
 {
-    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
-
-    bool on = lv_obj_has_state(s_btn, LV_STATE_CHECKED);
-
-    // Als override actief is en de gebruiker zet het relais terug naar de schema-staat:
-    // override cancelen zodat het schema weer het overneemt.
-    if (relay_override_is_active() && on == relay_override_base_state()) {
-        relay_set(on);
-        relay_override_cancel();
-        // Knopstatus is al correct (LVGL heeft CHECKABLE al getoggeld),
-        // alleen het label bijwerken.
-        ESP_LOGI(TAG, "Relais terug naar schema-staat, override opgeheven");
+    if (relay_override_is_active()) {
+        if (on == relay_override_base_state()) {
+            // Terug naar schema-staat: override opheffen
+            relay_set(on);
+            relay_override_cancel();
+            ui_relay_update(on);
+            ESP_LOGI(TAG, "Relais terug naar schema-staat, override opgeheven");
+        } else if (on != relay_get()) {
+            // Override staat al aan maar naar andere staat wisselen
+            relay_override_set(on);
+            ESP_LOGI(TAG, "Relais handmatig %s (override)", on ? "AAN" : "UIT");
+        }
+        // on == relay_get(): al in gewenste staat, niets doen
     } else {
-        relay_override_set(on);  // zet relay + update display intern
+        if (on == relay_get()) return;  // al conform schema, niets doen
+        relay_override_set(on);
         ESP_LOGI(TAG, "Relais handmatig %s (override)", on ? "AAN" : "UIT");
     }
-    lv_label_set_text(s_relay_label, on ? "AAN" : "UIT");
+}
+
+static void btn_on_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    apply_relay(true);
+}
+
+static void btn_off_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    apply_relay(false);
 }
 
 void ui_relay_create(lv_obj_t *parent)
 {
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(parent, 12, 0);
+    lv_obj_set_style_pad_gap(parent, 16, 0);
 
-    // Toggle knop
-    s_btn = lv_button_create(parent);
-    lv_obj_set_size(s_btn, 140, 60);
-    lv_obj_add_flag(s_btn, LV_OBJ_FLAG_CHECKABLE);
-    lv_obj_add_event_cb(s_btn, relay_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_set_style_bg_color(s_btn, lv_color_hex(0x444444), LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(s_btn, lv_color_hex(0x00aa44), LV_STATE_CHECKED);
-    lv_obj_set_style_radius(s_btn, 12, LV_STATE_DEFAULT);
+    // AAN knop (groen)
+    s_btn_on = lv_button_create(parent);
+    lv_obj_set_size(s_btn_on, 160, 70);
+    lv_obj_set_style_radius(s_btn_on, 12, 0);
+    lv_obj_set_style_bg_color(s_btn_on, lv_color_hex(0x00aa44), 0);
+    lv_obj_add_event_cb(s_btn_on, btn_on_cb, LV_EVENT_CLICKED, NULL);
 
-    s_relay_label = lv_label_create(s_btn);
-    lv_label_set_text(s_relay_label, "UIT");
-    lv_obj_set_style_text_color(s_relay_label, lv_color_white(), LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(s_relay_label, &lv_font_montserrat_20, LV_STATE_DEFAULT);
-    lv_obj_center(s_relay_label);
+    lv_obj_t *lbl_on = lv_label_create(s_btn_on);
+    lv_label_set_text(lbl_on, "AAN");
+    lv_obj_set_style_text_font(lbl_on, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_on, lv_color_white(), 0);
+    lv_obj_center(lbl_on);
+
+    // UIT knop (rood)
+    s_btn_off = lv_button_create(parent);
+    lv_obj_set_size(s_btn_off, 160, 70);
+    lv_obj_set_style_radius(s_btn_off, 12, 0);
+    lv_obj_set_style_bg_color(s_btn_off, lv_color_hex(0xcc2222), 0);
+    lv_obj_add_event_cb(s_btn_off, btn_off_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_off = lv_label_create(s_btn_off);
+    lv_label_set_text(lbl_off, "UIT");
+    lv_obj_set_style_text_font(lbl_off, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_off, lv_color_white(), 0);
+    lv_obj_center(lbl_off);
 
     // Schema / override statuslabel
     s_status_label = lv_label_create(parent);
     lv_label_set_text(s_status_label, "");
-    lv_obj_set_style_text_font(s_status_label, &lv_font_montserrat_14, LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(s_status_label, lv_color_hex(0xaaaaaa), LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(s_status_label, LV_TEXT_ALIGN_CENTER, LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(s_status_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_status_label, lv_color_hex(0xaaaaaa), 0);
+    lv_obj_set_style_text_align(s_status_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(s_status_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_status_label, LV_PCT(90));
+
+    // Initiële staat
+    ui_relay_update(relay_get());
 }
 
 void ui_relay_update(bool on)
 {
-    if (!s_btn || !s_relay_label) return;
+    if (!s_btn_on || !s_btn_off) return;
 
-    if (on) {
-        lv_obj_add_state(s_btn, LV_STATE_CHECKED);
-    } else {
-        lv_obj_remove_state(s_btn, LV_STATE_CHECKED);
-    }
-    lv_label_set_text(s_relay_label, on ? "AAN" : "UIT");
+    // Actieve knop: volledig kleur; inactieve knop: gedimd
+    lv_obj_set_style_bg_color(s_btn_on,  on ? lv_color_hex(0x00aa44) : lv_color_hex(0x224433), 0);
+    lv_obj_set_style_bg_color(s_btn_off, on ? lv_color_hex(0x442222) : lv_color_hex(0xcc2222), 0);
 }
 
 void ui_relay_update_status(const char *text, bool is_override)

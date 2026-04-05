@@ -39,32 +39,20 @@ static bool find_next_transition(const struct tm *now,
         int off_min = day->off_hour * 60 + day->off_min;
 
         if (d == 0) {
-            // Vandaag: alleen tijden die nog in de toekomst liggen
-            // Check of aan-tijd nog moet komen
             if (on_min > cur_min) {
                 *out_dow = dow; *out_hour = day->on_hour;  *out_min = day->on_min;  *out_is_on = true;
                 return true;
             }
-            // Check of we nu actief zijn (aan-tijd voorbij, uit-tijd nog niet)
             if (on_min <= cur_min && off_min > cur_min) {
                 *out_dow = dow; *out_hour = day->off_hour; *out_min = day->off_min; *out_is_on = false;
                 return true;
             }
         } else {
-            // Toekomstige dag: aan-tijd is altijd de eerste overgang
             *out_dow = dow; *out_hour = day->on_hour; *out_min = day->on_min; *out_is_on = true;
             return true;
         }
     }
     return false;
-}
-
-#include "touch_cal.h"
-
-static void recal_btn_cb(lv_event_t *e)
-{
-    touch_cal_erase();
-    esp_restart();
 }
 
 /* ── Status timer (elke seconde) ─────────────────────────────────────── */
@@ -91,7 +79,6 @@ static void status_timer_cb(lv_timer_t *timer)
         lv_obj_set_style_text_color(s_status_wifi, lv_color_hex(0x888888), 0);
     }
 
-    // Schema / override status onder de relay knop
     if (!synced) {
         ui_relay_update_status("Tijd niet gesynchroniseerd", false);
         return;
@@ -103,7 +90,6 @@ static void status_timer_cb(lv_timer_t *timer)
     int cur_dow = (t.tm_wday + 6) % 7;
 
     if (relay_override_is_active()) {
-        // Zoek eerstvolgende schema-overgang — dat is wanneer de override eindigt
         if (find_next_transition(&t, &next_dow, &next_hour, &next_min, &next_is_on)) {
             if (next_dow == cur_dow) {
                 snprintf(status_buf, sizeof(status_buf),
@@ -117,10 +103,8 @@ static void status_timer_cb(lv_timer_t *timer)
         }
         ui_relay_update_status(status_buf, true);
     } else {
-        // Toon het eerstvolgende relevante schema-event
         if (find_next_transition(&t, &next_dow, &next_hour, &next_min, &next_is_on)) {
             if (!next_is_on) {
-                // Schema is nu actief; toon het volledige dagschema
                 const settings_t *cfg = settings_get();
                 const day_schedule_t *day = &cfg->days[next_dow];
                 snprintf(status_buf, sizeof(status_buf),
@@ -129,7 +113,6 @@ static void status_timer_cb(lv_timer_t *timer)
                          day->on_hour, day->on_min,
                          day->off_hour, day->off_min);
             } else {
-                // Schema is nu niet actief; toon wanneer het de volgende keer aangaat
                 if (next_dow == cur_dow) {
                     snprintf(status_buf, sizeof(status_buf),
                              "Volgende: %02d:%02d", next_hour, next_min);
@@ -143,6 +126,11 @@ static void status_timer_cb(lv_timer_t *timer)
         }
         ui_relay_update_status(status_buf, false);
     }
+}
+
+static void relay_update_async_cb(void *arg)
+{
+    ui_relay_update((bool)(intptr_t)arg);
 }
 
 /* ── Public API ─────────────────────────────────────────────────────── */
@@ -178,43 +166,16 @@ esp_err_t ui_main_init(lv_display_t *disp)
     lv_obj_set_style_text_font(s_status_wifi, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(s_status_wifi, lv_color_hex(0x888888), 0);
 
-    // Tabview
-    lv_obj_t *tv = lv_tabview_create(scr);
-    lv_obj_set_size(tv, LV_PCT(100), LV_VER_RES - 24);
-    lv_obj_align(tv, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(tv, lv_color_hex(0x1a1a2e), 0);
+    // Inhoud onder de statusbalk
+    lv_obj_t *content = lv_obj_create(scr);
+    lv_obj_set_size(content, LV_PCT(100), LV_VER_RES - 24);
+    lv_obj_align(content, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(content, lv_color_hex(0x1a1a2e), 0);
+    lv_obj_set_style_border_width(content, 0, 0);
+    lv_obj_set_style_radius(content, 0, 0);
+    lv_obj_set_style_pad_all(content, 0, 0);
 
-    lv_obj_t *tab_bar = lv_tabview_get_tab_bar(tv);
-    lv_obj_set_style_bg_color(tab_bar, lv_color_hex(0x111122), 0);
-    lv_obj_set_style_text_font(tab_bar, &lv_font_montserrat_14, 0);
-
-    lv_obj_t *tab_relay  = lv_tabview_add_tab(tv, LV_SYMBOL_POWER " Relais");
-    lv_obj_t *tab_system = lv_tabview_add_tab(tv, LV_SYMBOL_LIST " Systeem");
-
-    ui_relay_create(tab_relay);
-
-    // Systeemtab
-    lv_obj_set_flex_flow(tab_system, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(tab_system, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(tab_system, 12, 0);
-
-    lv_obj_t *ip_lbl = lv_label_create(tab_system);
-    lv_label_set_text(ip_lbl, "Schema instellen via browser:\nhttp://<ip-adres>/schedule");
-    lv_obj_set_style_text_font(ip_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(ip_lbl, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_text_align(ip_lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(ip_lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ip_lbl, LV_PCT(90));
-
-    lv_obj_t *recal_btn = lv_button_create(tab_system);
-    lv_obj_set_size(recal_btn, 200, 44);
-    lv_obj_set_style_bg_color(recal_btn, lv_color_hex(0x884400), 0);
-    lv_obj_set_style_radius(recal_btn, 10, 0);
-    lv_obj_add_event_cb(recal_btn, recal_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *recal_lbl = lv_label_create(recal_btn);
-    lv_label_set_text(recal_lbl, LV_SYMBOL_REFRESH " Kalibreer touch");
-    lv_obj_set_style_text_font(recal_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_center(recal_lbl);
+    ui_relay_create(content);
 
     lv_timer_create(status_timer_cb, 1000, NULL);
 
@@ -222,11 +183,6 @@ esp_err_t ui_main_init(lv_display_t *disp)
 
     ESP_LOGI(TAG, "UI geinitialiseerd");
     return ESP_OK;
-}
-
-static void relay_update_async_cb(void *arg)
-{
-    ui_relay_update((bool)(intptr_t)arg);
 }
 
 void ui_main_update_relay(bool on)

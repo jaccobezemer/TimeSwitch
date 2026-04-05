@@ -534,15 +534,22 @@ static esp_err_t api_relay_post_handler(httpd_req_t *req)
 
     // Zelfde logica als de touchscreen-knop:
     // als override actief is en de nieuwe staat == schema-basisstaat → override opheffen
-    if (relay_override_is_active() && on == relay_override_base_state()) {
-        relay_set(on);
-        relay_override_cancel();
-        ui_main_update_relay(on);
-        ESP_LOGI(TAG, "Relais via web terug naar schema-staat, override opgeheven");
+    if (relay_override_is_active()) {
+        if (on == relay_override_base_state()) {
+            relay_set(on);
+            relay_override_cancel();
+            ui_main_update_relay(on);
+            ESP_LOGI(TAG, "Relais via web terug naar schema-staat, override opgeheven");
+        } else if (on != relay_get()) {
+            relay_override_set(on);
+            ESP_LOGI(TAG, "Relais via web %s (override)", on ? "AAN" : "UIT");
+        }
     } else {
-        relay_override_set(on);  // zet relay + update display intern
+        if (on == relay_get()) goto done;
+        relay_override_set(on);
         ESP_LOGI(TAG, "Relais via web %s (override)", on ? "AAN" : "UIT");
     }
+    done:;
 
     httpd_resp_sendstr(req, "OK");
     return ESP_OK;
