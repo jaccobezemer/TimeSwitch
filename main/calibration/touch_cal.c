@@ -85,8 +85,10 @@ int32_t touch_cal_apply_x(int32_t raw)
     if (!s_cal.valid) return raw;
     int32_t dx_raw = s_cal.raw_x1 - s_cal.raw_x0;
     if (dx_raw == 0) return raw;
+    int32_t x_max = lv_display_get_horizontal_resolution(lv_display_get_default()) - 1;
     int32_t x = s_cal.cal_x0 + (raw - s_cal.raw_x0) * (s_cal.cal_x1 - s_cal.cal_x0) / dx_raw;
     if (x < 0) x = 0;
+    if (x > x_max) x = x_max;
     return x;
 }
 
@@ -95,8 +97,10 @@ int32_t touch_cal_apply_y(int32_t raw)
     if (!s_cal.valid) return raw;
     int32_t dy_raw = s_cal.raw_y1 - s_cal.raw_y0;
     if (dy_raw == 0) return raw;
+    int32_t y_max = lv_display_get_vertical_resolution(lv_display_get_default()) - 1;
     int32_t y = s_cal.cal_y0 + (raw - s_cal.raw_y0) * (s_cal.cal_y1 - s_cal.cal_y0) / dy_raw;
     if (y < 0) y = 0;
+    if (y > y_max) y = y_max;
     return y;
 }
 

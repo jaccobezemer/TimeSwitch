@@ -15,12 +15,6 @@
 #include "touch.h"
 #include "touch_cal.h"
 
-static uint16_t map(uint16_t n, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max)
-{
-    uint16_t value = (n - in_min) * (out_max - out_min) / (in_max - in_min);
-    return (value < out_min) ? out_min : ((value > out_max) ? out_max : value);
-}
-
 static void process_coordinates(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y, uint16_t *strength, uint8_t *point_num, uint8_t max_point_num)
 {
     if (g_touch_cal_raw_mode) {

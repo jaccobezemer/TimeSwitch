@@ -10,8 +10,8 @@ idf_component_register(
         "time/time_sync.c"
         "ui/ui_main.c"
         "ui/ui_relay.c"
-        "ui/ui_schedule.c"
         "calibration/touch_cal.c"
+        "ota/ota_server.c"
     INCLUDE_DIRS
         "."
         "lcd"
@@ -22,6 +22,7 @@ idf_component_register(
         "time"
         "ui"
         "calibration"
+        "ota"
     REQUIRES
         esp_lcd
         esp_timer
@@ -31,5 +32,6 @@ idf_component_register(
         esp_event
         esp_netif
         esp_http_server
+        app_update
         lwip
 )

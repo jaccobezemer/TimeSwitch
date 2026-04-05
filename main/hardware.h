@@ -38,8 +38,10 @@
 
 // Touch orientatie (onafhankelijk van LCD-spiegeling)
 // Bij LV_DISPLAY_ROTATION_90: Y-as van XPT2046 is gespiegeld t.o.v. het scherm
+// Alle orientatie-correctie wordt gedaan door de kalibratie in process_coordinates.
+// Driver flags moeten false zijn anders wordt er dubbel gecorrigeerd.
 #define TOUCH_SWAP_XY   (false)
-#define TOUCH_MIRROR_X  (true)      // Y is verkeerd om maar omdat het scherm gedraaid is moet X gemirrord worden
+#define TOUCH_MIRROR_X  (true)      // Omdat het scherm 90 graden geroteerd is, is Y-as de X-as geworden vandaar dat X gemirrord wordt
 #define TOUCH_MIRROR_Y  (false)
 
 #define TOUCH_CLOCK_HZ ESP_LCD_TOUCH_SPI_CLOCK_HZ
@@ -52,4 +54,4 @@
 #define TOUCH_RST      (gpio_num_t) GPIO_NUM_NC
 #define TOUCH_IRQ      (gpio_num_t) GPIO_NUM_36
 
-#define RELAY_GPIO     (gpio_num_t) GPIO_NUM_26
+#define RELAY_GPIO     (gpio_num_t) GPIO_NUM_3  // RXD0 marked on the board
