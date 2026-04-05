@@ -1,4 +1,18 @@
+/.claude
+/.devcontainer
+
+# ESP-IDF build output
 build/
-sdkconfig
+build_*_*/
+
 managed_components/
 dependencies.lock
+
+# Config file wordt gegenereerd uit sdkconfig.defaults
+sdkconfig
+sdkconfig.old
+
+# Python / test rommel (optioneel)
+.pytest_cache/
+__pycache__/
+
