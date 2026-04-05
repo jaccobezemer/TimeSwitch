@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/Users/jacco/.claude/projects/c--Users-jacco-Documents-ESP-TimeSwitch/**)",
-      "Bash(python3 -c ':*)"
-    ]
-  }
-}
