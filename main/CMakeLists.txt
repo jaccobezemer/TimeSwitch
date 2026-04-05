@@ -1,0 +1,35 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "lcd/lcd.c"
+        "touch/touch.c"
+        "relay/relay.c"
+        "settings/settings.c"
+        "wifi/wifi_manager.c"
+        "wifi/captive_portal.c"
+        "time/time_sync.c"
+        "ui/ui_main.c"
+        "ui/ui_relay.c"
+        "ui/ui_schedule.c"
+        "calibration/touch_cal.c"
+    INCLUDE_DIRS
+        "."
+        "lcd"
+        "touch"
+        "relay"
+        "settings"
+        "wifi"
+        "time"
+        "ui"
+        "calibration"
+    REQUIRES
+        esp_lcd
+        esp_timer
+        driver
+        nvs_flash
+        esp_wifi
+        esp_event
+        esp_netif
+        esp_http_server
+        lwip
+)

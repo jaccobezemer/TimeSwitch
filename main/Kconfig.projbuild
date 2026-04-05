@@ -1,0 +1,25 @@
+menu "TimeSwitch Configuration"
+
+config TIMESWITCH_HOSTNAME
+    string "Device hostname (mDNS/DHCP)"
+    default "timeswitch"
+
+config TIMESWITCH_WIFI_SSID
+    string "Default WiFi SSID (leeg = captive portal)"
+    default ""
+
+config TIMESWITCH_WIFI_PASSWORD
+    string "Default WiFi wachtwoord"
+    default ""
+
+config TIMESWITCH_NTP_SERVER
+    string "NTP server adres"
+    default "pool.ntp.org"
+
+config TIMESWITCH_TIMEZONE
+    string "Tijdzone POSIX string"
+    default "CET-1CEST,M3.5.0,M10.5.0/3"
+    help
+        Midden-Europese tijd met zomertijd.
+
+endmenu
