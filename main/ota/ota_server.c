@@ -22,6 +22,62 @@ extern bool relay_override_is_active(void);
 extern bool relay_override_base_state(void);
 extern void ui_main_update_relay(bool on);
 
+/* ── WebSocket client tracking ───────────────────────────────────────── */
+#define WS_MAX_CLIENTS 4
+static int s_ws_fds[WS_MAX_CLIENTS];
+static int s_ws_count = 0;
+
+static void ws_add_client(int fd)
+{
+    for (int i = 0; i < s_ws_count; i++) {
+        if (s_ws_fds[i] == fd) return;
+    }
+    if (s_ws_count < WS_MAX_CLIENTS) {
+        s_ws_fds[s_ws_count++] = fd;
+    }
+}
+
+static void ws_remove_client(int fd)
+{
+    for (int i = 0; i < s_ws_count; i++) {
+        if (s_ws_fds[i] == fd) {
+            s_ws_fds[i] = s_ws_fds[--s_ws_count];
+            return;
+        }
+    }
+}
+
+void ws_broadcast_relay_state(void)
+{
+    if (!s_server || s_ws_count == 0) return;
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"on\":%s,\"override\":%s}",
+             relay_get()                ? "true" : "false",
+             relay_override_is_active() ? "true" : "false");
+
+    httpd_ws_frame_t frame = {
+        .type    = HTTPD_WS_TYPE_TEXT,
+        .payload = (uint8_t *)buf,
+        .len     = strlen(buf),
+    };
+
+    int i = 0;
+    while (i < s_ws_count) {
+        bool connected = (httpd_ws_get_fd_info(s_server, s_ws_fds[i]) == HTTPD_WS_CLIENT_WEBSOCKET);
+        if (!connected) {
+            ws_remove_client(s_ws_fds[i]);
+            continue;
+        }
+        esp_err_t err = httpd_ws_send_frame_async(s_server, s_ws_fds[i], &frame);
+        if (err != ESP_OK) {
+            ws_remove_client(s_ws_fds[i]);
+        } else {
+            i++;
+        }
+    }
+}
+
 int ota_get_progress(void)
 {
     return atomic_load(&s_ota_progress);
@@ -43,7 +99,7 @@ static esp_err_t status_get_handler(httpd_req_t *req)
         "<!DOCTYPE html><html><head>"
         "<meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<meta http-equiv='refresh' content='10'>"
+        ""
         "<title>TimeSwitch</title>"
         "<style>"
         "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;margin:0;padding:20px}"
@@ -92,26 +148,28 @@ static esp_err_t status_get_handler(httpd_req_t *req)
         "<button class='relay-btn' id='rb' onclick='toggleRelay()'>...</button>"
         "</div>"
         "<script>"
-        "function updateRelay(){"
-        "fetch('/api/relay').then(function(r){return r.json();}).then(function(d){"
+        "var ws;"
+        "var _on=false;"
+        "function applyState(d){"
         "var rs=document.getElementById('rs');"
         "var ro=document.getElementById('ro');"
         "var rb=document.getElementById('rb');"
+        "_on=d.on;"
         "rs.textContent=d.on?'Relais: AAN':'Relais: UIT';"
         "rs.style.color=d.on?'#00aa44':'#cc2222';"
         "ro.textContent=d.override?'Override actief':'';"
         "rb.textContent=d.on?'Zet UIT':'Zet AAN';"
-        "rb.className=d.on?'relay-btn btn-off':'relay-btn btn-on';"
-        "rb._on=d.on;"
-        "}).catch(function(){});}"
+        "rb.className=d.on?'relay-btn btn-off':'relay-btn btn-on';}"
+        "function connectWS(){"
+        "ws=new WebSocket('ws://'+location.host+'/ws');"
+        "ws.onmessage=function(e){applyState(JSON.parse(e.data));};"
+        "ws.onclose=function(){setTimeout(connectWS,2000);};"
+        "ws.onerror=function(){ws.close();};}"
         "function toggleRelay(){"
-        "var rb=document.getElementById('rb');"
-        "var newOn=!rb._on;"
         "fetch('/api/relay',{method:'POST',"
         "headers:{'Content-Type':'application/json'},"
-        "body:JSON.stringify({on:newOn})})"
-        ".then(function(){setTimeout(updateRelay,300);}).catch(function(){});}"
-        "updateRelay();"
+        "body:JSON.stringify({on:!_on})}).catch(function(){});}"
+        "connectWS();"
         "</script>";
     httpd_resp_send_chunk(req, RELAY_WIDGET, HTTPD_RESP_USE_STRLEN);
 
@@ -501,6 +559,49 @@ static esp_err_t api_schedule_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* ── WebSocket /ws ──────────────────────────────────────────────────── */
+static esp_err_t ws_handler(httpd_req_t *req)
+{
+    if (req->method == HTTP_GET) {
+        // Nieuwe verbinding
+        int fd = httpd_req_to_sockfd(req);
+        ws_add_client(fd);
+        ESP_LOGI(TAG, "WS client verbonden: fd=%d", fd);
+        // Stuur meteen de huidige staat
+        char buf[64];
+        snprintf(buf, sizeof(buf), "{\"on\":%s,\"override\":%s}",
+                 relay_get()                ? "true" : "false",
+                 relay_override_is_active() ? "true" : "false");
+        httpd_ws_frame_t frame = {
+            .type    = HTTPD_WS_TYPE_TEXT,
+            .payload = (uint8_t *)buf,
+            .len     = strlen(buf),
+        };
+        httpd_ws_send_frame(req, &frame);
+        return ESP_OK;
+    }
+
+    int fd = httpd_req_to_sockfd(req);
+    httpd_ws_frame_t frame = {0};
+    esp_err_t ret = httpd_ws_recv_frame(req, &frame, 0);
+    if (ret != ESP_OK) {
+        ws_remove_client(fd);
+        return ret;
+    }
+    if (frame.len > 0) {
+        uint8_t *buf = calloc(1, frame.len + 1);
+        if (buf) {
+            frame.payload = buf;
+            httpd_ws_recv_frame(req, &frame, frame.len);
+            free(buf);
+        }
+    }
+    if (frame.type == HTTPD_WS_TYPE_CLOSE || frame.type == HTTPD_WS_TYPE_PONG) {
+        // control frames worden nu afgehandeld door de server zelf
+    }
+    return ESP_OK;
+}
+
 /* ── GET /api/relay — huidige relaisstatus als JSON ─────────────────── */
 static esp_err_t api_relay_get_handler(httpd_req_t *req)
 {
@@ -539,17 +640,20 @@ static esp_err_t api_relay_post_handler(httpd_req_t *req)
             relay_set(on);
             relay_override_cancel();
             ui_main_update_relay(on);
+            ws_broadcast_relay_state();
             ESP_LOGI(TAG, "Relais via web terug naar schema-staat, override opgeheven");
         } else if (on != relay_get()) {
             relay_override_set(on);
+            ws_broadcast_relay_state();
             ESP_LOGI(TAG, "Relais via web %s (override)", on ? "AAN" : "UIT");
         }
     } else {
-        if (on == relay_get()) goto done;
-        relay_override_set(on);
-        ESP_LOGI(TAG, "Relais via web %s (override)", on ? "AAN" : "UIT");
+        if (on != relay_get()) {
+            relay_override_set(on);
+            ws_broadcast_relay_state();
+            ESP_LOGI(TAG, "Relais via web %s (override)", on ? "AAN" : "UIT");
+        }
     }
-    done:;
 
     httpd_resp_sendstr(req, "OK");
     return ESP_OK;
@@ -564,7 +668,7 @@ esp_err_t ota_server_start(void)
     config.server_port      = 80;
     config.stack_size       = 8192;
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 10;
+    config.max_uri_handlers = 11;
 
     esp_err_t err = httpd_start(&s_server, &config);
     if (err != ESP_OK) {
@@ -573,16 +677,17 @@ esp_err_t ota_server_start(void)
     }
 
     httpd_uri_t uris[] = {
-        { .uri = "/",             .method = HTTP_GET,  .handler = status_get_handler       },
-        { .uri = "/update",       .method = HTTP_GET,  .handler = update_get_handler       },
-        { .uri = "/update",       .method = HTTP_POST, .handler = update_post_handler      },
-        { .uri = "/schedule",     .method = HTTP_GET,  .handler = schedule_get_handler     },
-        { .uri = "/api/schedule", .method = HTTP_GET,  .handler = api_schedule_get_handler },
-        { .uri = "/api/schedule", .method = HTTP_POST, .handler = api_schedule_post_handler},
-        { .uri = "/api/relay",    .method = HTTP_GET,  .handler = api_relay_get_handler    },
-        { .uri = "/api/relay",    .method = HTTP_POST, .handler = api_relay_post_handler   },
+        { .uri = "/",             .method = HTTP_GET,  .handler = status_get_handler,        .is_websocket = false },
+        { .uri = "/update",       .method = HTTP_GET,  .handler = update_get_handler,        .is_websocket = false },
+        { .uri = "/update",       .method = HTTP_POST, .handler = update_post_handler,       .is_websocket = false },
+        { .uri = "/schedule",     .method = HTTP_GET,  .handler = schedule_get_handler,      .is_websocket = false },
+        { .uri = "/api/schedule", .method = HTTP_GET,  .handler = api_schedule_get_handler,  .is_websocket = false },
+        { .uri = "/api/schedule", .method = HTTP_POST, .handler = api_schedule_post_handler, .is_websocket = false },
+        { .uri = "/api/relay",    .method = HTTP_GET,  .handler = api_relay_get_handler,     .is_websocket = false },
+        { .uri = "/api/relay",    .method = HTTP_POST, .handler = api_relay_post_handler,    .is_websocket = false },
+        { .uri = "/ws",           .method = HTTP_GET,  .handler = ws_handler,                .is_websocket = true, .handle_ws_control_frames = true },
     };
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 9; i++) {
         httpd_register_uri_handler(s_server, &uris[i]);
     }
 

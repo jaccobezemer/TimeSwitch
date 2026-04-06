@@ -99,7 +99,7 @@ void ui_relay_update(bool on)
 
     // Actieve knop: volledig kleur; inactieve knop: gedimd
     lv_obj_set_style_bg_color(s_btn_on,  on ? lv_color_hex(0x00aa44) : lv_color_hex(0x224433), 0);
-    lv_obj_set_style_bg_color(s_btn_off, on ? lv_color_hex(0x442222) : lv_color_hex(0xcc2222), 0);
+    lv_obj_set_style_bg_color(s_btn_off, on ? lv_color_hex(0x883333) : lv_color_hex(0xcc2222), 0);
 }
 
 void ui_relay_update_status(const char *text, bool is_override)

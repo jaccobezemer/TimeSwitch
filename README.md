@@ -5,6 +5,14 @@
 
 Schakelklok voor ESP32 met touchscreen. Stuurt een relais aan op basis van een instelbaar weekschema.
 
+![Hardware opstelling](images/img-1.jpeg)
+
+## Web UI
+
+| Relais UIT                                | Relais AAN (override)                     | Schema instellen                        |
+| ----------------------------------------- | ----------------------------------------- | --------------------------------------- |
+| ![Web UI - relais uit](images/img-2.jpeg) | ![Web UI - relais aan](images/img-3.jpeg) | ![Schema instellen](images/img-4.jpeg) |
+
 ## Functies
 
 - Relais aan/uit via touchscreen én webbrowser
@@ -120,4 +128,4 @@ Ga naar `http://<ip-adres>/update` en upload een nieuw `.bin` bestand. Het appar
 
 ## Opnieuw kalibreren
 
-Tab **Systeem** → knop **Kalibreer touch** → apparaat herstart na kalibratie.
+Wis de NVS-partitie via `idf.py erase-flash` of via het `idf.py` monitor commando. Het kalibratiescherm verschijnt automatisch bij de volgende opstart als er geen geldige kalibratie aanwezig is.

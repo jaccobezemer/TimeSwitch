@@ -36,6 +36,7 @@ void relay_override_set(bool on)
     s_override_base_valid = false;  // wordt bij eerste check bepaald
     relay_set(on);
     ui_main_update_relay(on);
+    ws_broadcast_relay_state();
     ESP_LOGI(TAG, "Override actief: relais %s", on ? "AAN" : "UIT");
 }
 
@@ -45,6 +46,7 @@ bool relay_override_base_state(void)   { return s_override_base_schedule; }
 void relay_override_cancel(void)
 {
     s_override_active = false;
+    ws_broadcast_relay_state();
     ESP_LOGI(TAG, "Override gecanceld door gebruiker");
 }
 
@@ -86,11 +88,13 @@ static void check_relay_schedule(void)
             s_override_active = false;
             relay_set(should_be_on);
             ui_main_update_relay(should_be_on);
+            ws_broadcast_relay_state();
         }
     } else {
         if (should_be_on != relay_get()) {
             relay_set(should_be_on);
             ui_main_update_relay(should_be_on);
+            ws_broadcast_relay_state();
         }
     }
 }
@@ -141,7 +145,7 @@ void app_main(void)
     lvgl_port_add_touch(&touch_cfg);
 
     ESP_ERROR_CHECK(relay_init());
-    ESP_ERROR_CHECK(lcd_display_brightness_set(50));
+    ESP_ERROR_CHECK(lcd_display_brightness_set(75));
     ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_0));
 
     ESP_ERROR_CHECK(settings_init());
