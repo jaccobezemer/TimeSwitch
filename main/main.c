@@ -4,53 +4,63 @@
 #include <esp_system.h>
 #include <esp_log.h>
 #include <esp_err.h>
+#include <string.h>
 
-#include <lvgl.h>
-#include <esp_lvgl_port.h>
-
-#include "lcd.h"
-#include "touch.h"
-#include "touch_cal.h"
+#include "hardware.h"
 #include "relay.h"
 #include "settings.h"
 #include "wifi_manager.h"
 #include "captive_portal.h"
 #include "time_sync.h"
 #include "ota_server.h"
-#include "ui_main.h"
 
-static const char *TAG = "main";
+static const char* TAG = "main";
 
-/* ── Override state ──────────────────────────────────────────────────── */
-// Wanneer de gebruiker handmatig het relais bedient, wordt het schema tijdelijk
-// genegeerd tot de volgende schema-overgang.
-static bool    s_override_active        = false;
-static bool    s_override_state         = false;  // gewenste staat tijdens override
-static bool    s_override_base_schedule = false;  // schema-staat op moment van activeren
-static bool    s_override_base_valid    = false;  // nog niet bepaald na activatie
+/* ── Override State ──────────────────────────────────────────────────── */
+// Logic to temporarily ignore the schedule when a user manually toggles a relay.
+// This is now managed per-relay using bitmasks.
+static uint8_t s_override_active = 0; // Bitmask: 1 if override is active for the relay
+static uint8_t s_override_state = 0; // Bitmask: desired state during override
+static uint8_t s_override_base_schedule = 0; // Bitmask: schedule state at the moment of activation
+static uint8_t s_override_base_valid = 0; // Bitmask: 1 if base schedule state has been captured
 
-void relay_override_set(bool on)
+// Forward declaration for websocket update. This function needs to be implemented.
+void ws_broadcast_all_relay_states(void);
+
+
+void relay_override_set(uint8_t relay_index, bool on)
 {
-    s_override_active     = true;
-    s_override_state      = on;
-    s_override_base_valid = false;  // wordt bij eerste check bepaald
-    relay_set(on);
-    ui_main_update_relay(on);
-    ws_broadcast_relay_state();
-    ESP_LOGI(TAG, "Override actief: relais %s", on ? "AAN" : "UIT");
+    if (relay_index >= NUM_RELAYS) return;
+
+    s_override_active |= (1 << relay_index);
+    s_override_base_valid &= ~(1 << relay_index);
+
+    if (on) {
+        s_override_state |= (1 << relay_index);
+    } else {
+        s_override_state &= ~(1 << relay_index);
+    }
+
+    relay_set_state(relay_index, on);
+    ws_broadcast_all_relay_states();
+    ESP_LOGI(TAG, "Override active for relay %d: state %s", relay_index + 1, on ? "ON" : "OFF");
 }
 
-bool relay_override_is_active(void)    { return s_override_active; }
-bool relay_override_base_state(void)   { return s_override_base_schedule; }
-
-void relay_override_cancel(void)
+bool relay_override_is_active(uint8_t relay_index)
 {
-    s_override_active = false;
-    ws_broadcast_relay_state();
-    ESP_LOGI(TAG, "Override gecanceld door gebruiker");
+    if (relay_index >= NUM_RELAYS) return false;
+    return (s_override_active >> relay_index) & 1;
 }
 
-/* ── Schema check ────────────────────────────────────────────────────── */
+void relay_override_cancel(uint8_t relay_index)
+{
+    if (relay_index >= NUM_RELAYS) return;
+    s_override_active &= ~(1 << relay_index);
+    ws_broadcast_all_relay_states();
+    ESP_LOGI(TAG, "Override for relay %d cancelled by user", relay_index + 1);
+}
+
+/* ── Schedule Check ────────────────────────────────────────────────────── */
 static void check_relay_schedule(void)
 {
     if (!time_sync_is_synced()) return;
@@ -58,109 +68,93 @@ static void check_relay_schedule(void)
     struct tm t;
     time_sync_get_localtime(&t);
 
-    // tm_wday: 0=zondag…6=zaterdag; wij gebruiken 0=maandag…6=zondag
     int dow = (t.tm_wday + 6) % 7;
-
-    const settings_t *cfg = settings_get();
-    const day_schedule_t *day = &cfg->days[dow];
-
-    if (!day->enabled) return;
-
     int now_min = t.tm_hour * 60 + t.tm_min;
-    int on_min  = day->on_hour  * 60 + day->on_min;
-    int off_min = day->off_hour * 60 + day->off_min;
 
-    bool should_be_on;
-    if (on_min < off_min) {
-        should_be_on = (now_min >= on_min && now_min < off_min);
-    } else {
-        should_be_on = (now_min >= on_min || now_min < off_min);
+    const settings_t* cfg = settings_get();
+    bool state_changed = false;
+
+    for (int i = 0; i < NUM_RELAYS; i++) {
+        const relay_schedule_t* relay_sched = &cfg->schedules[i];
+        const day_schedule_t* day = &relay_sched->days[dow];
+        bool is_override = (s_override_active >> i) & 1;
+
+        bool should_be_on = false;
+        if (day->enabled) {
+            int on_min = day->on_hour * 60 + day->on_min;
+            int off_min = day->off_hour * 60 + day->off_min;
+            if (on_min < off_min) {
+                should_be_on = (now_min >= on_min && now_min < off_min);
+            } else {
+                should_be_on = (now_min >= on_min || now_min < off_min);
+            }
+        }
+
+        bool current_state = relay_get_state(i);
+        bool new_state = current_state;
+
+        if (is_override) {
+            bool base_valid = (s_override_base_valid >> i) & 1;
+            if (!base_valid) {
+                if (should_be_on) { s_override_base_schedule |= (1 << i); }
+                else { s_override_base_schedule &= ~(1 << i); }
+                s_override_base_valid |= (1 << i);
+            } else {
+                bool base_schedule_state = (s_override_base_schedule >> i) & 1;
+                if (should_be_on != base_schedule_state) {
+                    ESP_LOGI(TAG, "Schedule transition on relay %d: override cancelled.", i + 1);
+                    s_override_active &= ~(1 << i);
+                    new_state = should_be_on;
+                }
+            }
+        } else {
+            new_state = should_be_on;
+        }
+
+        if (current_state != new_state) {
+            relay_set_state(i, new_state);
+            state_changed = true;
+        }
     }
 
-    if (s_override_active) {
-        if (!s_override_base_valid) {
-            // Eerste check na activatie: onthoud wat het schema nu zegt
-            s_override_base_schedule = should_be_on;
-            s_override_base_valid    = true;
-        } else if (should_be_on != s_override_base_schedule) {
-            // Schema heeft een overgang gemaakt — override beëindigen
-            ESP_LOGI(TAG, "Schema-overgang: override gecanceld, relais %s", should_be_on ? "AAN" : "UIT");
-            s_override_active = false;
-            relay_set(should_be_on);
-            ui_main_update_relay(should_be_on);
-            ws_broadcast_relay_state();
-        }
-    } else {
-        if (should_be_on != relay_get()) {
-            relay_set(should_be_on);
-            ui_main_update_relay(should_be_on);
-            ws_broadcast_relay_state();
-        }
+    if (state_changed) {
+        ws_broadcast_all_relay_states();
     }
 }
 
-/* ── WiFi event callback ─────────────────────────────────────────────── */
-static void wifi_event_cb(wifi_mgr_event_t event, void *arg)
+/* ── WiFi Event Callback ─────────────────────────────────────────────── */
+static void wifi_event_cb(wifi_mgr_event_t event, void* arg)
 {
     switch (event) {
-        case WIFI_MGR_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "WiFi verbonden");
-            time_sync_init();
-            ota_server_start();
-            break;
-        case WIFI_MGR_EVENT_NO_CREDENTIALS:
-            ESP_LOGW(TAG, "Geen credentials — captive portal starten");
-            wifi_manager_start_ap();
-            captive_portal_start();
-            break;
-        case WIFI_MGR_EVENT_DISCONNECTED:
-            ESP_LOGW(TAG, "WiFi verbinding verbroken");
-            break;
-        default:
-            break;
+    case WIFI_MGR_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "WiFi connected");
+        time_sync_init();
+        ota_server_start();
+        break;
+    case WIFI_MGR_EVENT_NO_CREDENTIALS:
+        ESP_LOGW(TAG, "No credentials - starting captive portal");
+        wifi_manager_start_ap();
+        captive_portal_start();
+        break;
+    case WIFI_MGR_EVENT_DISCONNECTED:
+        ESP_LOGW(TAG, "WiFi disconnected");
+        break;
+    default:
+        break;
     }
 }
 
-/* ── Entry point ─────────────────────────────────────────────────────── */
+/* ── Entry Point ─────────────────────────────────────────────────────── */
 void app_main(void)
 {
-    esp_lcd_panel_io_handle_t lcd_io;
-    esp_lcd_panel_handle_t    lcd_panel;
-    esp_lcd_touch_handle_t    tp;
-    lvgl_port_touch_cfg_t     touch_cfg = { 0 };
-    lv_display_t             *lvgl_display = NULL;
-
-    ESP_ERROR_CHECK(lcd_display_brightness_init());
-    ESP_ERROR_CHECK(app_lcd_init(&lcd_io, &lcd_panel));
-
-    lvgl_display = app_lvgl_init(lcd_io, lcd_panel);
-    if (lvgl_display == NULL) {
-        ESP_LOGE(TAG, "Fatale fout in app_lvgl_init");
-        esp_restart();
-    }
-
-    ESP_ERROR_CHECK(touch_init(&tp));
-    touch_cfg.disp   = lvgl_display;
-    touch_cfg.handle = tp;
-    lvgl_port_add_touch(&touch_cfg);
-
-    ESP_ERROR_CHECK(relay_init());
-    ESP_ERROR_CHECK(lcd_display_brightness_set(75));
-    ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_0));
-
     ESP_ERROR_CHECK(settings_init());
-    touch_cal_load();
-    if (!touch_cal_is_valid()) {
-        ESP_LOGW(TAG, "Geen touch kalibratie, kalibratie starten...");
-        touch_cal_run(lvgl_display);
-    }
+    ESP_ERROR_CHECK(relay_init());
 
     ESP_ERROR_CHECK(wifi_manager_init(wifi_event_cb));
     ESP_ERROR_CHECK(wifi_manager_start());
 
-    ESP_ERROR_CHECK(ui_main_init(lvgl_display));
+    ESP_LOGI(TAG, "Initialization complete. Starting main loop.");
 
-    // Schema elke 5 seconden controleren
     while (true) {
         check_relay_schedule();
         vTaskDelay(pdMS_TO_TICKS(5 * 1000));

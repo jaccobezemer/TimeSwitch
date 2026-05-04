@@ -1,30 +1,21 @@
 idf_component_register(
     SRCS
         "main.c"
-        "lcd/lcd.c"
-        "touch/touch.c"
         "relay/relay.c"
         "settings/settings.c"
         "wifi/wifi_manager.c"
         "wifi/captive_portal.c"
         "time/time_sync.c"
-        "ui/ui_main.c"
-        "ui/ui_relay.c"
-        "calibration/touch_cal.c"
         "ota/ota_server.c"
     INCLUDE_DIRS
         "."
-        "lcd"
-        "touch"
         "relay"
         "settings"
         "wifi"
         "time"
-        "ui"
-        "calibration"
         "ota"
     REQUIRES
-        esp_lcd
+        cjson
         esp_timer
         driver
         nvs_flash
