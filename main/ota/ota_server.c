@@ -72,14 +72,25 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     char time_str[32]; strftime(time_str, sizeof(time_str), "%d-%m-%Y %H:%M:%S", &t);
 
     httpd_resp_set_type(req, "text/html");
-    const char HEAD[] = "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>TimeSwitch - 8 Channel</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#ccc;margin:0;padding:12px}"
+    static const char HEAD_PRE[] =
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>";
+    static const char HEAD_POST[] =
+        "</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#ccc;margin:0;padding:12px}"
         "h1{color:#00aa44;margin-bottom:4px} .meta{color:#666;font-size:13px;margin-bottom:16px} .links a{color:#00aa44;text-decoration:none;margin-right:20px;font-size:14px}"
         ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:16px} .relay-box{background:#222233;border-radius:10px;padding:16px;display:flex;align-items:center;justify-content:space-between}"
         ".relay-info{flex-grow:1} .relay-name{font-size:16px;font-weight:bold;color:#fff} .relay-state{font-size:14px;} .relay-ovr{font-size:11px;color:#ff8800;margin-top:4px;min-height:13px}"
         ".relay-btn{padding:10px 24px;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;min-width:80px} .btn-on{background:#009e41;color:#fff} .btn-off{background:#c02727;color:#fff}"
-        "</style></head><body><h1>TimeSwitch - 8 Relays</h1>";
-    httpd_resp_send_chunk(req, HEAD, HTTPD_RESP_USE_STRLEN);
+        "</style></head><body>";
+    char title[64];
+    snprintf(title, sizeof(title), "%s - %d Relays", app->project_name, NUM_RELAYS);
+    httpd_resp_send_chunk(req, HEAD_PRE, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send_chunk(req, title, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send_chunk(req, HEAD_POST, HTTPD_RESP_USE_STRLEN);
+
+    char h1[64];
+    snprintf(h1, sizeof(h1), "<h1>%s - %d Relays</h1>", app->project_name, NUM_RELAYS);
+    httpd_resp_send_chunk(req, h1, HTTPD_RESP_USE_STRLEN);
 
     char meta[128]; snprintf(meta, sizeof(meta), "<p class='meta'>Version: %s &bull; Time: %s</p>", app->version, time_str);
     httpd_resp_send_chunk(req, meta, HTTPD_RESP_USE_STRLEN);
