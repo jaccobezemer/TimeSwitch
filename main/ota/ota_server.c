@@ -114,7 +114,20 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
 
 static esp_err_t schedule_get_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
-    const char *pre = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Schedules</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:12px}h1{color:#00aa44;margin-bottom:16px}a{text-decoration:none}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}.relay-link{background:#222233;border-radius:10px;padding:20px;text-align:center;color:#fff;font-size:18px;font-weight:bold;transition:background .2s}.relay-link:hover{background:#333344}</style></head><body><h1>Select Relay to Edit Schedule</h1><div class='grid'>";
+    const char *pre =
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Schema's</title><style>"
+        "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:16px}"
+        "h1{color:#00aa44;margin-bottom:16px;font-size:22px}"
+        "a{text-decoration:none}"
+        ".back{color:#00aa44;display:inline-block;margin-bottom:16px;font-size:16px}"
+        ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}"
+        ".relay-link{background:#222233;border-radius:10px;padding:22px 12px;text-align:center;"
+        "color:#fff;font-size:18px;font-weight:bold;display:block}"
+        "</style></head><body>"
+        "<a class='back' href='/'>&larr; Terug</a>"
+        "<h1>Schema per relais</h1><div class='grid'>";
     httpd_resp_send_chunk(req, pre, HTTPD_RESP_USE_STRLEN);
     char link[128];
     for (int i = 0; i < NUM_RELAYS; i++) {
@@ -132,7 +145,31 @@ static esp_err_t schedule_edit_get_handler(httpd_req_t *req) {
     if (httpd_query_key_value(buf, "relay", param, sizeof(param)) == ESP_OK) relay_index = atoi(param);
     if (relay_index < 0 || relay_index >= NUM_RELAYS) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid relay"); return ESP_FAIL; }
 
-    const char PAGE[] = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Edit</title><style>*{box-sizing:border-box}body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:16px}h1{color:#00aa44;font-size:20px}.day{background:#222;border-radius:10px;padding:14px;margin-bottom:12px}.day-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.day-name{font-weight:600;color:#fff}.switch{position:relative;width:44px;height:24px}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;cursor:pointer;inset:0;background:#444;border-radius:24px;transition:.3s}.slider:before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}input:checked+.slider{background:#00aa44}input:checked+.slider:before{transform:translateX(20px)}.times{display:flex;gap:12px}.time-field label{font-size:11px;color:#888}.time-field input{width:100%;background:#111;color:#fff;border:1px solid #333;border-radius:6px;padding:8px}button{width:100%;padding:14px;background:#00aa44;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;margin-top:16px}#msg{text-align:center;margin-top:12px;min-height:20px}.ok{color:#00aa44}.err{color:#c22}.back{color:#00aa44;text-decoration:none;margin-bottom:16px}</style></head><body><a class='back' href='/schedule'>&larr; Back</a>";
+    static const char PAGE[] =
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Schema bewerken</title><style>"
+        "*{box-sizing:border-box}"
+        "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:16px;max-width:520px;margin:auto}"
+        "h1{color:#00aa44;font-size:22px;margin:8px 0 16px}"
+        ".back{color:#00aa44;text-decoration:none;font-size:16px;display:inline-block;margin-bottom:4px}"
+        ".day{background:#222233;border-radius:10px;padding:16px;margin-bottom:12px}"
+        ".day-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}"
+        ".day-name{font-weight:700;color:#fff;font-size:18px}"
+        ".switch{position:relative;width:52px;height:28px;flex-shrink:0}"
+        ".switch input{opacity:0;width:0;height:0}"
+        ".slider{position:absolute;cursor:pointer;inset:0;background:#444;border-radius:28px;transition:.3s}"
+        ".slider:before{content:'';position:absolute;height:22px;width:22px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}"
+        "input:checked+.slider{background:#00aa44}"
+        "input:checked+.slider:before{transform:translateX(24px)}"
+        ".times{display:grid;grid-template-columns:1fr 1fr;gap:12px}"
+        ".time-field label{display:block;font-size:13px;color:#888;margin-bottom:4px}"
+        ".time-field input{width:100%;background:#111;color:#fff;border:1px solid #444;border-radius:8px;padding:12px;font-size:16px}"
+        "button{width:100%;padding:16px;background:#00aa44;color:#fff;border:none;border-radius:8px;font-size:18px;cursor:pointer;margin-top:8px}"
+        "#msg{text-align:center;margin-top:12px;min-height:20px;font-size:16px}"
+        ".ok{color:#00aa44}.err{color:#c22}"
+        "</style></head><body>"
+        "<a class='back' href='/schedule'>&larr; Terug</a>";
     httpd_resp_send_chunk(req, PAGE, HTTPD_RESP_USE_STRLEN);
 
     char title[128];
