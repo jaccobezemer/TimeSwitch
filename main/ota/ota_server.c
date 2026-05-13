@@ -19,6 +19,7 @@ extern void relay_override_set(uint8_t relay_index, bool on);
 extern void relay_override_cancel(uint8_t relay_index);
 extern bool relay_override_is_active(uint8_t relay_index);
 
+static esp_err_t favicon_get_handler(httpd_req_t *req);
 static esp_err_t status_get_handler(httpd_req_t *req);
 static esp_err_t ws_handler(httpd_req_t *req);
 static esp_err_t api_relay_post_handler(httpd_req_t *req);
@@ -31,6 +32,8 @@ static esp_err_t api_names_get_handler(httpd_req_t *req);
 static esp_err_t api_names_post_handler(httpd_req_t *req);
 static esp_err_t update_get_handler(httpd_req_t *req);
 static esp_err_t update_post_handler(httpd_req_t *req);
+
+#define FAVICON_LINK "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
 
 #define WS_MAX_CLIENTS 4
 static int s_ws_fds[WS_MAX_CLIENTS];
@@ -66,6 +69,21 @@ void ws_broadcast_all_relay_states(void) {
     }
 }
 
+static esp_err_t favicon_get_handler(httpd_req_t *req)
+{
+    static const char SVG[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+        "<rect width='32' height='32' rx='6' fill='#1a1a2e'/>"
+        "<circle cx='16' cy='16' r='11' fill='none' stroke='#00aa44' stroke-width='2.5'/>"
+        "<line x1='16' y1='16' x2='16' y2='7.5' stroke='#00aa44' stroke-width='2.5' stroke-linecap='round'/>"
+        "<line x1='16' y1='16' x2='21.5' y2='20' stroke='#00aa44' stroke-width='2.5' stroke-linecap='round'/>"
+        "<circle cx='16' cy='16' r='1.5' fill='#00aa44'/>"
+        "</svg>";
+    httpd_resp_set_type(req, "image/svg+xml");
+    httpd_resp_set_hdr(req, "Cache-Control", "max-age=86400");
+    return httpd_resp_send(req, SVG, HTTPD_RESP_USE_STRLEN);
+}
+
 static esp_err_t status_get_handler(httpd_req_t *req) {
     const esp_app_desc_t *app = esp_app_get_description();
     time_t now; time(&now); struct tm t; localtime_r(&now, &t);
@@ -76,7 +94,7 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
         "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>";
     static const char HEAD_POST[] =
-        "</title><style>body{font-family:sans-serif;background:#1a1a2e;color:#ccc;margin:0;padding:12px}"
+        "</title>" FAVICON_LINK "<style>body{font-family:sans-serif;background:#1a1a2e;color:#ccc;margin:0;padding:12px}"
         "h1{color:#00aa44;margin-bottom:4px} .meta{color:#666;font-size:13px;margin-bottom:16px} .links a{color:#00aa44;text-decoration:none;margin-right:20px;font-size:14px}"
         ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:16px} .relay-box{background:#222233;border-radius:10px;padding:16px;display:flex;align-items:center;justify-content:space-between}"
         ".relay-info{flex-grow:1} .relay-name{font-size:16px;font-weight:bold;color:#fff} .relay-state{font-size:14px;} .relay-ovr{font-size:11px;color:#ff8800;margin-top:4px;min-height:13px}"
@@ -117,6 +135,7 @@ static esp_err_t schedule_get_handler(httpd_req_t *req) {
     const char *pre =
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        FAVICON_LINK
         "<title>Schema's</title><style>"
         "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:16px}"
         "h1{color:#00aa44;margin-bottom:16px;font-size:22px}"
@@ -148,6 +167,7 @@ static esp_err_t schedule_edit_get_handler(httpd_req_t *req) {
     static const char PAGE[] =
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        FAVICON_LINK
         "<title>Schema bewerken</title><style>"
         "*{box-sizing:border-box}"
         "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:16px;max-width:520px;margin:auto}"
@@ -237,6 +257,7 @@ static esp_err_t names_get_handler(httpd_req_t *req) {
     static const char PAGE[] =
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        FAVICON_LINK
         "<title>Relay instellingen</title>"
         "<style>"
         "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;padding:16px}"
@@ -354,6 +375,7 @@ static esp_err_t api_names_post_handler(httpd_req_t *req) {
 static const char UPLOAD_PAGE_PRE[] =
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+    FAVICON_LINK
     "<title>TimeSwitch OTA</title>"
     "<style>"
     "body{font-family:sans-serif;background:#1a1a2e;color:#ccc;"
@@ -541,6 +563,7 @@ esp_err_t ota_server_start(void) {
     if (httpd_start(&s_server, &config) != ESP_OK) return ESP_FAIL;
 
     httpd_uri_t uris[] = {
+        {.uri = "/favicon.svg", .method = HTTP_GET, .handler = favicon_get_handler},
         {.uri = "/", .method = HTTP_GET, .handler = status_get_handler},
         {.uri = "/update", .method = HTTP_GET, .handler = update_get_handler},
         {.uri = "/update", .method = HTTP_POST, .handler = update_post_handler},
