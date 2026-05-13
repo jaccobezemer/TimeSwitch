@@ -1,90 +1,77 @@
 # TimeSwitch
 
-![Static Badge](https://img.shields.io/badge/DEVICE-ESP32--2432S028R-8A2BE2) ![Static Badge](https://img.shields.io/badge/MCU-ESP32-8A2BE2)
+![Static Badge](https://img.shields.io/badge/DEVICE-XIAO_ESP32--S3-8A2BE2) ![Static Badge](https://img.shields.io/badge/MCU-ESP32--S3-8A2BE2)
 ![Static Badge](https://img.shields.io/badge/OS-FreeRTOS-green) ![Static Badge](https://img.shields.io/badge/SDK-ESP--IDF%20v5.x-blue)
 
-Schakelklok voor ESP32 met touchscreen. Stuurt een relais aan op basis van een instelbaar weekschema.
-
-![Hardware opstelling](images/img-1.jpeg)
-
-## Web UI
-
-| Relais UIT                                | Relais AAN (override)                     | Schema instellen                        |
-| ----------------------------------------- | ----------------------------------------- | --------------------------------------- |
-| ![Web UI - relais uit](images/img-2.jpeg) | ![Web UI - relais aan](images/img-3.jpeg) | ![Schema instellen](images/img-4.jpeg) |
+8-kanaals schakelklok gebouwd op een Seeed XIAO ESP32-S3. Stuurt tot 8 relais aan op basis van een instelbaar weekschema per relais. Ondersteunt zowel gewone relais als bistabiele impulsrelais.
 
 ## Functies
 
-- Relais aan/uit via touchscreen én webbrowser
-- Per dag instelbaar schema (Ma t/m Zo) met aan- en uitschakeltijd, opgeslagen in NVS
-- Override: handmatige bediening (display of web) negeert het schema tot de volgende schema-overgang; terugzetten naar de schema-staat heft de override direct op
-- Display en web UI zijn altijd synchroon — wijziging via web volgt direct op de display
-- Automatische tijdsynchronisatie via NTP (CET/CEST tijdzone)
+- Tot 8 relais, elk met een eigen weekschema (Ma t/m Zo, aan- en uitschakeltijd)
+- Ondersteuning voor **gewone relais** (GPIO hoog/laag) én **bistabiele impulsrelais** (puls om toestand te wisselen)
+- Pulsduur en relaistype per relais instelbaar via de webinterface en opgeslagen in NVS
+- Ingebouwde spreiding van pulsen voorkomt PSU-overbelasting bij gelijktijdig schakelen
+- Override per relais: handmatige bediening via web negeert het schema tot de volgende schema-overgang
+- Real-time statusupdates via **WebSocket** — pagina blijft synchroon zonder herladen
+- Mobiel-vriendelijke webinterface
+- OTA firmware-update via browser met voortgangsbalk en automatische herdetectie
 - WiFi configuratie via captive portal (geen hardcoded credentials)
-- Schema instellen via webbrowser (`http://<ip>/schedule`)
-- Relais bedienen via webbrowser (`http://<ip>/`)
-- OTA firmware-update via webbrowser (`http://<ip>/update`)
-- Touch kalibratie met opslag in NVS; opnieuw kalibreren via Systeemtab
+- Automatische tijdsynchronisatie via NTP (CET/CEST tijdzone)
 
 ## Hardware
 
-| Component | Details                          |
-| --------- | -------------------------------- |
-| Board     | ESP32-2432S028R (Sunton "CYD")   |
-| MCU       | ESP32-D0WDQ6 (240MHz dual-core)  |
-| Display   | 2.8" ST7789, 240×320, SPI        |
-| Touch     | XPT2046, SPI                     |
-| Relais    | GPIO3 (RXD0)                     |
+| Component | Details                      |
+| --------- | ---------------------------- |
+| Board     | Seeed XIAO ESP32-S3          |
+| MCU       | ESP32-S3, 240 MHz dual-core  |
+| Flash     | 8 MB                         |
+| Relais    | Tot 8 stuks, GPIO1 t/m GPIO8 |
 
-## Pinout
+## Pinout relais
 
-### Display (SPI2)
+| Relais | XIAO-pin | GPIO   |
+| ------ | -------- | ------ |
+| 1      | D0       | GPIO1  |
+| 2      | D1       | GPIO2  |
+| 3      | D2       | GPIO3  |
+| 4      | D3       | GPIO4  |
+| 5      | D4       | GPIO5  |
+| 6      | D5       | GPIO6  |
+| 7      | D8       | GPIO7  |
+| 8      | D9       | GPIO8  |
 
-| Signaal   | GPIO |
-| --------- | ---- |
-| CLK       | 14   |
-| MOSI      | 13   |
-| MISO      | 12   |
-| DC        | 2    |
-| CS        | 15   |
-| Reset     | 4    |
-| Backlight | 21   |
+D6 (GPIO43/TX) en D7 (GPIO44/RX) zijn vrijgehouden voor UART-debugging.
+Het aantal actieve relais is instelbaar via `NUM_RELAYS` in `hardware.h`.
 
-### Touch (SPI3)
+## Relay types
 
-| Signaal | GPIO |
-| ------- | ---- |
-| CLK     | 25   |
-| MOSI    | 32   |
-| MISO    | 39   |
-| CS      | 33   |
-| IRQ     | 36   |
+**Normaal relais** — GPIO hoog = aan, GPIO laag = uit.
 
-### Relais
-
-| Signaal | GPIO |
-| ------- | ---- |
-| Relais  | 3    |
+**Bistabiel (impuls) relais** — elke schakelactie stuurt een puls op de GPIO. De pulsduur is instelbaar via `RELAY_PULSE_MS` in `hardware.h` (standaard 250 ms) en per relais aanpasbaar via de webinterface. Bij gelijktijdig schakelen van meerdere relais worden de pulsen automatisch gespreid over `RELAY_INTER_PULSE_MS` (standaard 150 ms) om de voeding niet te overbelasten.
 
 ## Projectstructuur
 
 ```text
 main/
-├── main.c              entry point, schema-check loop, override-logica
-├── hardware.h          GPIO- en display-constanten
-├── Kconfig.projbuild
-├── lcd/                display driver + LVGL init
-├── touch/              XPT2046 driver
-├── touch_cal/          touch kalibratie (NVS)
-├── relay/              relais aansturing
-├── settings/           NVS opslag (weekschema per dag)
-├── wifi/               WiFi manager + captive portal
-├── time/               NTP synchronisatie (CET/CEST)
-├── ota/                OTA firmware-update server
-└── ui/                 LVGL interface (tabview)
-    ├── ui_main         statusbalk + tabview shell + schema-statustimer
-    └── ui_relay        relais toggle knop + override-feedback
+├── main.c              Entry point, schema-check loop (elke 5s), override-logica per relais
+├── hardware.h          GPIO-pinnen, relay types, puls-timing, NUM_RELAYS
+├── Kconfig.projbuild   WiFi SSID/wachtwoord, NTP-server, tijdzone (menuconfig)
+├── relay/              Relay aansturing: normaal + impuls, timer-gebaseerde puls,
+│                       automatische spreiding bij gelijktijdige schakelingen
+├── settings/           NVS-opslag: weekschema, relaynamen, relay type + pulse_ms
+├── wifi/               WiFi manager + captive portal (AP-modus zonder credentials)
+├── time/               NTP synchronisatie, tijdzone instelling
+└── ota/                HTTP-server: webinterface, REST API, WebSocket, OTA-update
 ```
+
+## Web interface
+
+| URL                      | Omschrijving                                 |
+| ------------------------ | -------------------------------------------- |
+| `http://<ip>/`           | Relais overzicht en schakelknoppen           |
+| `http://<ip>/schedule`   | Weekschema instellen per relais              |
+| `http://<ip>/names`      | Relaynamen, type en pulsduur instellen       |
+| `http://<ip>/update`     | OTA firmware-update met voortgangsbalk       |
 
 ## Bouwen
 
@@ -92,40 +79,22 @@ Vereist ESP-IDF v5.2 of hoger.
 
 ```bash
 idf.py build
-idf.py flash monitor
+idf.py -p <poort> flash monitor
 ```
 
 ## Eerste opstart
 
-1. Automatisch kalibratiescherm: tik de 4 kruispunten aan
-2. Geen WiFi ingesteld: verbind met `TimeSwitch-Setup` en open `http://192.168.4.1`
-3. Vul SSID en wachtwoord in — apparaat herstart en verbindt
-4. Tijd wordt automatisch gesynchroniseerd via NTP
-
-## Schema instellen
-
-Ga in de browser naar `http://<ip-adres>/schedule`. Het IP-adres is zichtbaar in de statusbalk bovenaan het display.
-
-Per dag (Ma t/m Zo) is in te stellen:
-
-- Aan/uit inschakelen voor die dag
-- Aan-tijd en uit-tijd
-
-## Relais bedienen via web
-
-Ga naar `http://<ip-adres>/`. De statuspagina toont de huidige relaisstatus en een knop om te schakelen. Override-status is zichtbaar en de display-knop volgt direct mee.
-
-## OTA update
-
-Ga naar `http://<ip-adres>/update` en upload een nieuw `.bin` bestand. Het apparaat herstart automatisch na een succesvolle update.
+1. Geen WiFi ingesteld: verbind met het access point `TimeSwitch` en open `http://192.168.4.1`
+2. Vul SSID en wachtwoord in — apparaat herstart en verbindt automatisch
+3. Tijd wordt gesynchroniseerd via NTP zodra WiFi actief is
+4. IP-adres is zichtbaar in de seriële monitor
 
 ## Override-gedrag
 
-- Schakelen (display of web) terwijl schema iets anders zegt → **override actief** (statuslabel toont wanneer override eindigt)
-- Terugzetten naar de schema-staat (display of web) → **override direct opgeheven**
+- Handmatig schakelen terwijl het schema iets anders zegt → **override actief**
+- Terugzetten naar de schema-staat → **override direct opgeheven**
 - Override eindigt automatisch bij de volgende schema-overgang
-- Display en web UI zijn altijd synchroon
 
-## Opnieuw kalibreren
+## OTA update
 
-Wis de NVS-partitie via `idf.py erase-flash` of via het `idf.py` monitor commando. Het kalibratiescherm verschijnt automatisch bij de volgende opstart als er geen geldige kalibratie aanwezig is.
+Ga naar `http://<ip>/update`, selecteer een `.bin` bestand en klik Upload. Een voortgangsbalk toont de uploadstatus. Na een succesvolle flash herstart het apparaat automatisch en wacht de browser tot het apparaat terug online is.
