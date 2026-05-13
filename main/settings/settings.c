@@ -15,9 +15,13 @@ static SemaphoreHandle_t s_mutex;
 static bool s_initialized = false;
 
 static const uint8_t  DEFAULT_TYPES[]    = { RELAY_1_TYPE, RELAY_2_TYPE, RELAY_3_TYPE,
-                                              RELAY_4_TYPE, RELAY_5_TYPE, RELAY_6_TYPE };
+                                              RELAY_4_TYPE, RELAY_5_TYPE, RELAY_6_TYPE,
+                                              RELAY_7_TYPE, RELAY_8_TYPE };
 static const uint16_t DEFAULT_PULSE_MS[] = { RELAY_PULSE_MS, RELAY_PULSE_MS, RELAY_PULSE_MS,
-                                              RELAY_PULSE_MS, RELAY_PULSE_MS, RELAY_PULSE_MS };
+                                              RELAY_PULSE_MS, RELAY_PULSE_MS, RELAY_PULSE_MS,
+                                              RELAY_PULSE_MS, RELAY_PULSE_MS };
+_Static_assert(sizeof(DEFAULT_TYPES)    / sizeof(DEFAULT_TYPES[0])    >= NUM_RELAYS, "Voeg RELAY_N_TYPE toe in hardware.h en DEFAULT_TYPES");
+_Static_assert(sizeof(DEFAULT_PULSE_MS) / sizeof(DEFAULT_PULSE_MS[0]) >= NUM_RELAYS, "Voeg entry toe in DEFAULT_PULSE_MS");
 
 static void load_defaults(void)
 {

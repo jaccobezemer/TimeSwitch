@@ -24,8 +24,10 @@ static int64_t s_next_slot_us = 0;
 
 static const gpio_num_t RELAY_GPIOS[] = {
     RELAY_1_GPIO, RELAY_2_GPIO, RELAY_3_GPIO,
-    RELAY_4_GPIO, RELAY_5_GPIO, RELAY_6_GPIO
+    RELAY_4_GPIO, RELAY_5_GPIO, RELAY_6_GPIO,
+    RELAY_7_GPIO, RELAY_8_GPIO
 };
+_Static_assert(sizeof(RELAY_GPIOS) / sizeof(RELAY_GPIOS[0]) >= NUM_RELAYS, "Voeg RELAY_N_GPIO toe in hardware.h en RELAY_GPIOS");
 
 static void pulse_stop_cb(void *arg)
 {
